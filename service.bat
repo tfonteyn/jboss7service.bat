@@ -10,6 +10,10 @@ REM      %JBOSS_HOME%\bin
 REM      %JBOSS_HOME%\modules\native\sbin\
 REM      %JBOSS_HOME%\modules\system\layers\base\native\sbin\
 REM
+REM  v7 2014-03-20 added /logpath /startup /config /hostconfig /base /debug
+REM                      simplified/corrected use of quotes
+REM
+REM  v6 was shipped with EAP 6.2.0
 REM  v6 2013-08-21 added /name /desc
 REM                added /serviceuser /servicepass
 REM                extended directory checking for versions and locations
@@ -87,15 +91,22 @@ rem echo PRUNSRV=%PRUNSRV%
 rem defaults
 set SHORTNAME=JBossEAP6
 set DISPLAYNAME=JBossEAP6
-set DESCRIPTION="JBoss Enterprise Application Platform 6"
+rem NO quotes around the description here !
+set DESCRIPTION=JBoss Enterprise Application Platform 6
 set CONTROLLER=localhost:9999
 set DC_HOST=master
 set IS_DOMAIN=false
 set LOGLEVEL=INFO
+set LOGPATH=
 set JBOSSUSER=
 set JBOSSPASS=
 set SERVICE_USER=
 set SERVICE_PASS=
+set STARTUP_MODE=manual
+set ISDEBUG=
+set CONFIG=
+set HOSTCONFIG=host.xml
+set BASE=
 
 set COMMAND=%1
 shift
@@ -113,25 +124,59 @@ echo Usage:
 echo(
 echo   service install ^<options^>  , where the options are:
 echo(
-echo     /controller ^<host:port^>   : The host:port of the management interface
-echo                                 default: %CONTROLLER%
-echo     /host [^<domainhost^>]      : Indicates that domain mode is to be used with an optional domain controller name
-echo                                 default: %DC_HOST%
-echo                                 Not specifying /host will install JBoss in standalone mode
-echo     /loglevel ^<level^>         : The log level for the service:  Error, Info, Warn or Debug ^(Case insensitive^)
-echo                                 default: %LOGLEVEL% 
+echo     /startup                  : Set the service to auto start
+echo                                 Not specifying sets the service to manual
 echo(
-echo     /name ^<servicename^>       : The name of the service - should not contain spaces
+echo     /jbossuser ^<username^>     : JBoss username to use for the shutdown command.
+echo     /jbosspass ^<password^>     : Password for /jbossuser
+echo(
+echo     /controller ^<host:port^>   : The host:port of the management interface.
+echo                                 default: %CONTROLLER%
+echo(
+echo     /host [^<domainhost^>]      : Indicates that domain mode is to be used with an
+echo                                 optional domain controller name.
+echo                                 default: %DC_HOST%
+echo                                 Not specifying /host will install JBoss in
+echo                                 standalone mode.
+echo(
+echo Options to use when multiple services or different accounts are needed:
+echo(
+echo     /name ^<servicename^>       : The name of the service
+echo(                                 
 echo                                 default: %SHORTNAME%
-echo     /desc ^<description^>     : The description of the service, use double quotes to allow spaces
+echo     /desc ^<description^>       : The description of the service, use double
+echo                                 quotes to allow spaces.
+echo                                 Maximum 1024 characters.
 echo                                 default: %DESCRIPTION%
-echo     /serviceuser ^<username^>   : Specifies the name of the account under which the service should run.
-echo                                 Use an account name in the form DomainName\UserName
-echo                                 default: not used, the service runs as Local System Account.
+echo(
+echo     /serviceuser ^<username^>   : Specifies the name of the account under which
+echo                                 the service should run.
+echo                                 Use an account name in the form of
+echo                                 DomainName\UserName
+echo                                 default: not used, the service runs as
+echo                                 Local System Account.
 echo     /servicepass ^<password^>   : password for /serviceuser
 echo(
-echo     /jbossuser ^<username^>     : jboss username to use for the shutdown command
-echo     /jbosspass ^<password^>     : password for /jbossuser
+echo Advanced options:
+echo(
+echo     /config ^<xmlfile^>         : The server-config to use
+echo                                 default: standalone.xml / domain.xml
+echo     /hostconfig ^<xmlfile^>     : domain mode only, the host config to use
+echo                                 default: host.xml
+echo(
+echo     /base ^<directory^>         : The base directory for server/domain content
+echo                                 default: standalone / domain
+echo(
+echo     /loglevel ^<level^>         : The log level for the service:  Error, Info,
+echo                                 Warn or Debug ^(Case insensitive^)
+echo                                 default: %LOGLEVEL%
+echo     /logpath ^<path^>           : Path of the log
+echo                                 default depends on domain or standalone mode
+echo                                 /base applies when /logpath is not set.
+echo                                   %JBOSS_HOME%\domain\log
+echo                                   %JBOSS_HOME%\standalone\log
+echo(
+echo     /debug                    : run the service install in debug mode
 echo(
 echo Other commands:	
 echo(	
@@ -140,9 +185,8 @@ echo   service start [/name ^<servicename^>]
 echo   service stop [/name ^<servicename^>]
 echo   service restart [/name ^<servicename^>]
 echo(
-echo     /name  ^<servicename^>      : The name of the service - should not contain spaces
+echo     /name  ^<servicename^>      : Name of the service: should not contain spaces
 echo                                 default: %SHORTNAME%
-echo(
 echo(
 goto endBatch
 
@@ -151,12 +195,70 @@ goto endBatch
 :LoopArgs
 if "%~1" == "" goto doInstall
 
+if /I "%~1"== "/debug" (
+  set ISDEBUG=true
+  shift
+  goto LoopArgs
+)
+if /I "%~1"== "/startup" (
+  set STARTUP_MODE=auto
+  shift
+  goto LoopArgs
+)
+if /I "%~1"== "/config" (
+  set CONFIG=
+  if not "%~2"=="" (
+    set T=%~2
+    if not "!T:~0,1!"=="/" (
+      set CONFIG=%~2
+    )
+  )
+  if "!CONFIG!" == "" (
+    echo ERROR: You need to specify a config name
+    goto endBatch
+  )
+  shift
+  shift
+  goto LoopArgs
+)
+if /I "%~1"== "/hostconfig" (
+  set HOSTCONFIG=
+  if not "%~2"=="" (
+    set T=%~2
+    if not "!T:~0,1!"=="/" (
+      set HOSTCONFIG=%~2
+    )
+  )
+  if "!HOSTCONFIG!" == "" (
+    echo ERROR: You need to specify a host-config name
+    goto endBatch
+  )
+  shift
+  shift
+  goto LoopArgs
+)
+if /I "%~1"== "/base" (
+  set BASE=
+  if not "%~2"=="" (
+    set T=%~2
+    if not "!T:~0,1!"=="/" (
+      set BASE=%~2
+    )
+  )
+  if "!BASE!" == "" (
+    echo ERROR: You need to specify a base directory name
+    goto endBatch
+  )
+  shift
+  shift
+  goto LoopArgs
+)
 if /I "%~1"== "/controller" (
   set CONTROLLER=
   if not "%~2"=="" (  
-    set T="%~2"
+    set T=%~2
     if not "!T:~0,1!"=="/" (
-      set CONTROLLER="%~2"
+      set CONTROLLER=%~2
     )
   )
   if "!CONTROLLER!" == "" (
@@ -170,10 +272,10 @@ if /I "%~1"== "/controller" (
 if /I "%~1"== "/name" (
   set SHORTNAME=
   if not "%~2"=="" (
-    set T="%~2"
+    set T=%~2
     if not "!T:~0,1!"=="/" (
-      set SHORTNAME="%~2"
-      set DISPLAYNAME="%~2"
+      set SHORTNAME=%~2
+      set DISPLAYNAME=%~2
     )
   )
   if "!SHORTNAME!" == "" (
@@ -187,13 +289,13 @@ if /I "%~1"== "/name" (
 if /I "%~1"== "/desc" (
   set DESCRIPTION=
   if not "%~2"=="" (
-    set T="%~2"
+    set T=%~2
     if not "!T:~0,1!"=="/" (
-      set DESCRIPTION="%~2"
+      set DESCRIPTION=%~2
     )
   )
   if "!DESCRIPTION!" == "" (
-    echo ERROR: You need to specify a description
+    echo ERROR: You need to specify a description, maximum of 1024 characters
     goto endBatch
   )
   shift
@@ -203,9 +305,9 @@ if /I "%~1"== "/desc" (
 if /I "%~1"== "/jbossuser" (
   set JBOSSUSER=
   if not "%~2"=="" (
-    set T="%~2"
+    set T=%~2
     if not "!T:~0,1!"=="/" (
-      set JBOSSUSER="%~2"
+      set JBOSSUSER=%~2
     )
   )
   if "!JBOSSUSER!" == "" (
@@ -219,9 +321,9 @@ if /I "%~1"== "/jbossuser" (
 if /I "%~1"== "/jbosspass" (
   set JBOSSPASS=
   if not "%~2"=="" (
-    set T="%~2"
+    set T=%~2
     if not "!T:~0,1!"=="/" (
-      set JBOSSPASS="%~2"
+      set JBOSSPASS=%~2
     )
   )
   if "!JBOSSPASS!" == "" (
@@ -235,9 +337,9 @@ if /I "%~1"== "/jbosspass" (
 if /I "%~1"== "/serviceuser" (
   set SERVICE_USER=
   if not "%~2"=="" (
-    set T="%~2"
+    set T=%~2
     if not "!T:~0,1!"=="/" (
-      set SERVICE_USER="%~2"
+      set SERVICE_USER=%~2
     )
   )
   if "!SERVICE_USER!" == "" (
@@ -251,9 +353,9 @@ if /I "%~1"== "/serviceuser" (
 if /I "%~1"== "/servicepass" (
   set SERVICE_PASS=
   if not "%~2"=="" (
-    set T="%~2"
+    set T=%~2
     if not "!T:~0,1!"=="/" (
-      set SERVICE_PASS="%~2"
+      set SERVICE_PASS=%~2
     )
   )
   if "!SERVICE_PASS!" == "" (
@@ -264,12 +366,13 @@ if /I "%~1"== "/servicepass" (
   shift
   goto LoopArgs
 )
+rem the hostname is optional
 if /I "%~1"== "/host" (
   set IS_DOMAIN=true
   if not "%~2"=="" (
-    set T="%~2"
+    set T=%~2
     if not "!T:~0,1!"=="/" (
-      set DC_HOST="%~2"
+      set DC_HOST=%~2
       shift
     )
   )
@@ -281,7 +384,23 @@ if /I "%~1"== "/loglevel" (
     echo ERROR: /loglevel must be set to Error, Info, Warn or Debug ^(Case insensitive^)
     goto endBatch      
   )
-  set LOGLEVEL="%~2"
+  set LOGLEVEL=%~2
+  shift
+  shift
+  goto LoopArgs
+)
+if /I "%~1"== "/logpath" (
+  set LOGPATH=
+  if not "%~2"=="" (
+    set T=%~2
+    if not "!T:~0,1!"=="/" (
+      set LOGPATH=%~2
+	)
+  )
+  if "!LOGPATH!" == "" (
+    echo ERROR: You need to specify a path for the service log
+    goto endBatch
+  )
   shift
   shift
   goto LoopArgs
@@ -306,30 +425,59 @@ if not "%SERVICE_USER%" == "" (
     echo When specifying a user, you need to specify the password
     goto endBatch
   )
-  set RUNAS=--ServiceUser %SERVICE_USER% --ServicePassword %SERVICE_PASS%
+  set RUNAS=--ServiceUser=%SERVICE_USER% --ServicePassword=%SERVICE_PASS%
 )
+
+if "%STDOUT%"=="" set STDOUT=auto
+if "%STDERR%"=="" set STDERR=auto
+
+if "%START_PATH%"=="" set START_PATH=%JBOSS_HOME%\bin
+if "%STOP_PATH%"=="" set STOP_PATH=%JBOSS_HOME%\bin
+
+if "%STOP_SCRIPT%"=="" set STOP_SCRIPT=jboss-cli.bat
 
 if /I "%IS_DOMAIN%" == "true" (
-  set STARTPARAM="/c \"set NOPAUSE=Y ^^^&^^^& domain.bat\""
-  set STOPPARAM="/c jboss-cli.bat --controller=%CONTROLLER% --connect %CREDENTIALS% --command=/host=!DC_HOST!:shutdown"
-  set LOGPATH=%JBOSS_HOME%\domain\log
+  if "%BASE%"=="" set BASE=%JBOSS_HOME%\domain
+  if "%CONFIG%"=="" set CONFIG=domain.xml
+  if "%START_SCRIPT%"=="" set START_SCRIPT=domain.bat
+  set STARTPARAM="/c#set#NOPAUSE=Y#&&#!START_SCRIPT!#-Djboss.domain.base.dir=!BASE!#--domain-config=!CONFIG!#--host-config=!HOSTCONFIG!"
+  set STOPPARAM="/c %STOP_SCRIPT% --controller=%CONTROLLER% --connect %CREDENTIALS% --command=/host=!DC_HOST!:shutdown"
 ) else (
-  set STARTPARAM="/c \"set NOPAUSE=Y ^^^&^^^& standalone.bat\""
-  set STOPPARAM="/c jboss-cli.bat --controller=%CONTROLLER% --connect %CREDENTIALS% --command=:shutdown"
-  set LOGPATH=%JBOSS_HOME%\standalone\log
+  if "%BASE%"=="" set BASE=%JBOSS_HOME%\standalone
+  if "%CONFIG%"=="" set CONFIG=standalone.xml
+  if "%START_SCRIPT%"=="" set START_SCRIPT=standalone.bat
+  set STARTPARAM="/c#set#NOPAUSE=Y#&&#!START_SCRIPT!#-Djboss.server.base.dir=!BASE!#--server-config=!CONFIG!"
+  set STOPPARAM="/c !STOP_SCRIPT! --controller=%CONTROLLER% --connect %CREDENTIALS% --command=:shutdown"
 )
 
+if "%LOGPATH%"=="" set LOGPATH=!BASE!\log
+ 
 echo(
-rem echo SHORTNAME=%SHORTNAME%
-rem echo DESCRIPTION=%DESCRIPTION%
-rem echo STARTPARAM=%STARTPARAM%
-rem echo STOPPARAM=%STOPPARAM%
-rem echo LOGLEVEL=%LOGLEVEL%
-rem echo CREDENTIALS=%CREDENTIALS%
-
-rem echo on
-%PRUNSRV% install %SHORTNAME% %RUNAS% --DisplayName=%DISPLAYNAME% --Description %DESCRIPTION% --LogLevel=%LOGLEVEL% --LogPath="%LOGPATH%" --LogPrefix=service --StdOutput=auto --StdError=auto --StartMode=exe --StartImage=cmd.exe --StartPath="%JBOSS_HOME%\bin" ++StartParams=%STARTPARAM% --StopMode=exe --StopImage=cmd.exe --StopPath="%JBOSS_HOME%\bin"  ++StopParams=%STOPPARAM%
-rem @echo off
+if /I "%ISDEBUG%" == "true" (
+  echo JBOSS_HOME=%JBOSS_HOME%
+  echo RUNAS=%RUNAS%
+  echo SHORTNAME=%SHORTNAME%
+  echo DESCRIPTION=%DESCRIPTION%
+  echo STARTPARAM=%STARTPARAM%
+  echo STOPPARAM=%STOPPARAM%
+  echo LOGLEVEL=%LOGLEVEL%
+  echo LOGPATH=%LOGPATH%
+  echo CREDENTIALS=%CREDENTIALS%
+  echo BASE=%BASE%
+  echo CONFIG=%CONFIG%
+  echo START_SCRIPT=%START_SCRIPT%
+  echo START_PATH=%START_PATH%
+  echo STOP_SCRIPT=%STOP_SCRIPT%
+  echo STOP_PATH=%STOP_PATH%
+  echo STDOUT=%STDOUT%
+  echo STDERR=%STDERR%
+  echo on
+)
+rem quotes around the description !
+%PRUNSRV% install %SHORTNAME% %RUNAS% --DisplayName=%DISPLAYNAME% --Description="%DESCRIPTION%" --LogLevel=%LOGLEVEL% --LogPath=%LOGPATH% --LogPrefix=service --StdOutput=%STDOUT% --StdError=%STDERR% --StartMode=exe --Startup=%STARTUP_MODE% --StartImage=cmd.exe --StartPath=%START_PATH% ++StartParams=%STARTPARAM% --StopMode=exe --StopImage=cmd.exe --StopPath=%STOP_PATH%  ++StopParams=%STOPPARAM%
+@if /I "%ISDEBUG%" == "true" (
+  @echo off
+)
 goto cmdEnd
 
 
@@ -400,5 +548,3 @@ echo "Unforseen error=%errorlevel%"
 
 rem nothing below, exit
 :endBatch
-
-
