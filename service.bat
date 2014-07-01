@@ -10,10 +10,10 @@ REM      %JBOSS_HOME%\bin
 REM      %JBOSS_HOME%\modules\native\sbin\
 REM      %JBOSS_HOME%\modules\system\layers\base\native\sbin\
 REM
-REM  v7 2014-03-20 added /logpath /startup /config /hostconfig /base /debug
+REM  v7 2014-07-01 added /logpath /startup /config /hostconfig /base /debug
 REM                      simplified/corrected use of quotes
 REM
-REM  v6 was shipped with EAP 6.2.0
+REM  v6 was shipped with EAP 6.2.0 and supports all previous versions of 6.x as well.
 REM  v6 2013-08-21 added /name /desc
 REM                added /serviceuser /servicepass
 REM                extended directory checking for versions and locations
@@ -80,7 +80,7 @@ if exist "%JBOSS_HOME%\modules\native\sbin\prunsrv.exe" (
   set PRUNSRV="%JBOSS_HOME%\modules\system\layers\base\native\sbin\prunsrv.exe"
 ) else (
   REM could happen if the user copied the batch file manually
-  echo Native package not installed
+  echo Native utilities not installed
   goto cmdEnd
 )
 
@@ -451,7 +451,16 @@ if /I "%IS_DOMAIN%" == "true" (
 )
 
 if "%LOGPATH%"=="" set LOGPATH=!BASE!\log
- 
+
+if not exists "!BASE!" (
+  echo "The base directory does not exist: !BASE!
+  goto endBatch
+)
+if not exists "!BASE!\configuration\!CONFIG!" (
+  echo "The configuration does not exist: !BASE!\configuration\!CONFIG!
+  goto endBatch
+)
+
 echo(
 if /I "%ISDEBUG%" == "true" (
   echo JBOSS_HOME=%JBOSS_HOME%
@@ -471,12 +480,21 @@ if /I "%ISDEBUG%" == "true" (
   echo STOP_PATH=%STOP_PATH%
   echo STDOUT=%STDOUT%
   echo STDERR=%STDERR%
-  echo on
 )
-rem quotes around the description !
-%PRUNSRV% install %SHORTNAME% %RUNAS% --DisplayName=%DISPLAYNAME% --Description="%DESCRIPTION%" --LogLevel=%LOGLEVEL% --LogPath=%LOGPATH% --LogPrefix=service --StdOutput=%STDOUT% --StdError=%STDERR% --StartMode=exe --Startup=%STARTUP_MODE% --StartImage=cmd.exe --StartPath=%START_PATH% ++StartParams=%STARTPARAM% --StopMode=exe --StopImage=cmd.exe --StopPath=%STOP_PATH%  ++StopParams=%STOPPARAM%
 @if /I "%ISDEBUG%" == "true" (
-  @echo off
+  @echo on
+)
+@rem quotes around the "%DESCRIPTION%" but nowhere else
+%PRUNSRV% install %SHORTNAME% %RUNAS% --DisplayName=%DISPLAYNAME% --Description="%DESCRIPTION%" --LogLevel=%LOGLEVEL% --LogPath=%LOGPATH% --LogPrefix=service --StdOutput=%STDOUT% --StdError=%STDERR% --StartMode=exe --Startup=%STARTUP_MODE% --StartImage=cmd.exe --StartPath=%START_PATH% ++StartParams=%STARTPARAM% --StopMode=exe --StopImage=cmd.exe --StopPath=%STOP_PATH%  ++StopParams=%STOPPARAM%
+
+@echo off
+if errorlevel 8 (
+  echo ERROR: The service %SHORTNAME% already exists
+  goto endBatch
+)
+if errorlevel 0 (
+  echo Service %SHORTNAME% installed
+  goto endBatch
 )
 goto cmdEnd
 
@@ -491,10 +509,13 @@ if /I "%~1"=="/name" (
   )
 ) 
 %PRUNSRV% stop %SHORTNAME%
-if "%errorlevel%" == "0" (
+if errorlevel 0 (
   %PRUNSRV% delete %SHORTNAME%
+  if errorlevel 0 (
+    echo Service %SHORTNAME% uninstalled
+  )
 ) else (
-  echo Unable to stop the service
+  echo Unable to stop the service %SHORTNAME%
 )
 goto cmdEnd
 
@@ -505,6 +526,7 @@ if /I "%~1"=="/name" (
   )
 )
 %PRUNSRV% start %SHORTNAME%
+echo Service %SHORTNAME% starting...
 goto cmdEnd
 
 :cmdStop
@@ -514,6 +536,7 @@ if /I "%~1"=="/name" (
   )
 )
 %PRUNSRV% stop %SHORTNAME%
+echo Service %SHORTNAME% stopping...
 goto cmdEnd
 
 :cmdRestart
@@ -523,22 +546,20 @@ if /I "%~1"=="/name" (
   )
 )
 %PRUNSRV% stop %SHORTNAME%
+echo Service %SHORTNAME% stopping...
 if "%errorlevel%" == "0" (
   %PRUNSRV% start %SHORTNAME%
+  echo Service %SHORTNAME% starting...
 ) else (
-  echo Unable to stop the service
+  echo Unable to stop the service %SHORTNAME%
 )
 goto cmdEnd
 
 
 :cmdEnd
 REM if there is a need to add other error messages, make sure to list higher numbers first !
-if errorlevel 8 (
-  echo ERROR: The service %SHORTNAME% already exists
-  goto endBatch
-)
 if errorlevel 2 (
-  echo ERROR: Failed to load service configuration
+  echo ERROR: Failed to load service %SHORTNAME% configuration
   goto endBatch
 )
 if errorlevel 0 (
