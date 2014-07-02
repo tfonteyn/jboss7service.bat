@@ -452,16 +452,16 @@ if /I "%IS_DOMAIN%" == "true" (
 
 if "%LOGPATH%"=="" set LOGPATH=!BASE!\log
 
-if not exists "!BASE!" (
-  echo "The base directory does not exist: !BASE!
-  goto endBatch
-)
-if not exists "!BASE!\configuration\!CONFIG!" (
-  echo "The configuration does not exist: !BASE!\configuration\!CONFIG!
+if not exist %BASE%\ (
+  echo The base directory does not exist: %BASE%
   goto endBatch
 )
 
-echo(
+if not exist %BASE%\configuration\%CONFIG% (
+  echo The configuration does not exist: %BASE%\configuration\%CONFIG%
+  goto endBatch
+)
+
 if /I "%ISDEBUG%" == "true" (
   echo JBOSS_HOME=%JBOSS_HOME%
   echo RUNAS=%RUNAS%
@@ -481,13 +481,15 @@ if /I "%ISDEBUG%" == "true" (
   echo STDOUT=%STDOUT%
   echo STDERR=%STDERR%
 )
-@if /I "%ISDEBUG%" == "true" (
+if /I "%ISDEBUG%" == "true" (
   @echo on
 )
 @rem quotes around the "%DESCRIPTION%" but nowhere else
 %PRUNSRV% install %SHORTNAME% %RUNAS% --DisplayName=%DISPLAYNAME% --Description="%DESCRIPTION%" --LogLevel=%LOGLEVEL% --LogPath=%LOGPATH% --LogPrefix=service --StdOutput=%STDOUT% --StdError=%STDERR% --StartMode=exe --Startup=%STARTUP_MODE% --StartImage=cmd.exe --StartPath=%START_PATH% ++StartParams=%STARTPARAM% --StopMode=exe --StopImage=cmd.exe --StopPath=%STOP_PATH%  ++StopParams=%STOPPARAM%
+@if /I "%ISDEBUG%" == "true" (
+  @echo off
+)
 
-@echo off
 if errorlevel 8 (
   echo ERROR: The service %SHORTNAME% already exists
   goto endBatch
