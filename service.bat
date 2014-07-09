@@ -10,7 +10,7 @@ REM      %JBOSS_HOME%\bin
 REM      %JBOSS_HOME%\modules\native\sbin\
 REM      %JBOSS_HOME%\modules\system\layers\base\native\sbin\
 REM
-REM  v7 2014-07-01 added /logpath /startup /config /hostconfig /base /debug
+REM  v7 2014-07-09 added /logpath /startup /config /hostconfig /base /debug
 REM                      simplified/corrected use of quotes
 REM
 REM  v6 was shipped with EAP 6.2.0 and supports all previous versions of 6.x as well.
@@ -165,7 +165,9 @@ echo     /hostconfig ^<xmlfile^>     : domain mode only, the host config to use
 echo                                 default: host.xml
 echo(
 echo     /base ^<directory^>         : The base directory for server/domain content
-echo                                 default: standalone / domain
+echo                                 Must be specified as a fully qualified path
+echo                                 default: %JBOSS_HOME%\standalone or
+echo                                          %JBOSS_HOME%\domain
 echo(
 echo     /loglevel ^<level^>         : The log level for the service:  Error, Info,
 echo                                 Warn or Debug ^(Case insensitive^)
