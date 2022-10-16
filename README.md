@@ -67,8 +67,11 @@ Advanced options:
 Other commands:
 
   service uninstall [/name <servicename>]
+
   service start [/name <servicename>]
+
   service stop [/name <servicename>]
+
   service restart [/name <servicename>]
 
     /name  <servicename>      : Name of the service: should not contain spaces
